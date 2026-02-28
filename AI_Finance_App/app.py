@@ -281,43 +281,89 @@ elif menu == "EMI Calculator":
             "Status": status
         }, EMI_FILE)
 
+
 # =========================
 # GOLD LOAN
 # =========================
-elif menu == "Gold Loan":
-    st.subheader("🥇 Gold Loan")
-    weight = st.number_input("Gold Weight (grams)", 0.0)
-    rate = st.number_input("Interest % per year", 0.0)
-    months = st.number_input("Loan Tenure (Months)", 1)
-    paid_months = st.number_input("Months Already Paid", 0, step=1)
 
-    gold_price = 5000
-    loan_amount = weight * gold_price
-    interest = loan_amount * rate / 100 * months / 12
-    total_payable = loan_amount + interest
-    monthly_payment = total_payable / months
-    paid_amount = paid_months * monthly_payment
-    remaining_amount = max(total_payable - paid_amount, 0)
-    status = "Loan Completed ✅" if remaining_amount == 0 else f"Loan Pending ⏳ Remaining: ₹{remaining_amount:,.0f}"
+# =========================
+# GOLD LOAN
+# =========================
+
+if menu == "Gold Loan":
+
+    st.subheader("🥇 Gold Loan Calculator (Bank Style)")
+
+    # Inputs
+    weight = st.number_input("Gold Weight (grams)", 0.0)
+    gold_rate = st.number_input("Gold Rate (₹ per gram)", 5000.0)
+    rate = st.number_input("Interest Rate (% per year)", 0.0)
+    months = st.number_input("Loan Duration (Months)", 1)
+    advance_received = st.number_input("Loan Amount Received ₹ (Advance)", 0.0)
+    paid_amount = st.number_input("Already Paid Amount ₹", 0.0)
 
     if st.button("Calculate Gold Loan"):
-        st.success(f"Loan Amount: ₹{loan_amount:,.0f}")
-        st.info(f"Interest: ₹{interest:,.0f}")
-        st.info(f"Monthly Payment: ₹{monthly_payment:,.0f}")
-        st.warning(f"Total Payable: ₹{total_payable:,.0f}")
-        st.warning(status)
 
+        # Principal loan amount (bank value)
+        loan_amount = weight * gold_rate
+
+        # If user enters how much bank gave
+        if advance_received == 0:
+            advance_received = loan_amount * 0.75  # Assume bank gives 75% of gold value
+
+        # Total interest for duration
+        interest_amount = advance_received * (rate / 100) * (months / 12)
+
+        # Total payable = advance + interest
+        total_payable = advance_received + interest_amount
+
+        # Monthly and yearly payment
+        monthly_payment = total_payable / months
+        yearly_payment = monthly_payment * 12
+
+        # Pending amount after any payment
+        pending_amount = max(total_payable - paid_amount, 0)
+
+        # Interest per year
+        yearly_interest = interest_amount / (months / 12)
+
+        # Loan status
+        status = "✅ Loan Completed" if pending_amount == 0 else "❌ Loan Pending"
+
+        # Display results
+        st.success(f"Gold Value: ₹{loan_amount:,.0f}")
+        st.info(f"Loan Amount Received: ₹{advance_received:,.0f}")
+        st.warning(f"Interest Amount: ₹{interest_amount:,.0f}")
+        st.info(f"Interest per Year: ₹{yearly_interest:,.0f}")
+        st.error(f"Total Payable (Loan + Interest): ₹{total_payable:,.0f}")
+        st.metric("Monthly Payment", f"₹{monthly_payment:,.0f}")
+        st.metric("Yearly Payment", f"₹{yearly_payment:,.0f}")
+        st.metric("Pending Amount", f"₹{pending_amount:,.0f}")
+        st.markdown(f"**Loan Status:** {status}")
+
+        # Optional: bar chart
+        fig, ax = plt.subplots(figsize=(5,3))
+        categories = ["Received", "Interest", "Pending"]
+        values = [advance_received, interest_amount, pending_amount]
+        colors = ["#FFD700", "#FF6347", "#32CD32"]
+        ax.bar(categories, values, color=colors)
+        st.pyplot(fig)
+
+        # Save current loan to CSV
         save_to_csv({
-            "Weight": weight,
+            "Gold Weight (g)": weight,
+            "Gold Rate": gold_rate,
             "Loan Amount": loan_amount,
-            "Interest": interest,
-            "Monthly Payment": monthly_payment,
+            "Loan Received": advance_received,
+            "Interest Amount": interest_amount,
+            "Interest per Year": yearly_interest,
             "Total Payable": total_payable,
-            "Months Paid": paid_months,
-            "Remaining Amount": remaining_amount,
+            "Monthly Payment": monthly_payment,
+            "Yearly Payment": yearly_payment,
+            "Paid Amount": paid_amount,
+            "Pending Amount": pending_amount,
             "Status": status
         }, GOLD_FILE)
-
 # =========================
 # MONTHLY EXPENSES
 # =========================
