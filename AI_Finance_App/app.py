@@ -2,10 +2,10 @@ import streamlit as st
 import os
 import math
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from fpdf import FPDF
+from datetime import datetime
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -25,6 +25,39 @@ st.set_page_config(
 
 
 # =========================
+# CSV FILES
+# =========================
+
+DASHBOARD_FILE = "dashboard_data.csv"
+EXPENSE_FILE = "monthly_expenses.csv"
+GOLD_FILE = "gold_loans.csv"
+HEALTH_FILE = "health_expenses.csv"
+
+
+# =========================
+# SAVE TO CSV
+# =========================
+
+def save_to_csv(data, filename):
+
+    now = datetime.now()
+
+    data["Date"] = now.strftime("%Y-%m-%d")
+    data["Time"] = now.strftime("%H:%M:%S")
+
+    df_new = pd.DataFrame([data])
+
+    if os.path.exists(filename):
+        df_old = pd.read_csv(filename)
+        df = pd.concat([df_old, df_new], ignore_index=True)
+    else:
+        df = df_new
+
+    df.to_csv(filename, index=False)
+
+
+
+# =========================
 # LOAD API
 # =========================
 
@@ -39,6 +72,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 AI_AVAILABLE = True
 
 try:
+
     if not GOOGLE_API_KEY:
         raise Exception("No API Key")
 
@@ -80,18 +114,10 @@ Use simple language.
 
 
 # =========================
-# SESSION HISTORY
-# =========================
-
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-
-# =========================
 # TITLE
 # =========================
 
-st.title("💰 AI Personal Finance Analyzing Services")
+st.title("💰 AI Personal Finance Manager")
 st.caption("All-in-One Money Manager 🇮🇳")
 
 
@@ -99,9 +125,20 @@ st.caption("All-in-One Money Manager 🇮🇳")
 # SIDEBAR
 # =========================
 
-menu = st.sidebar.radio(
+menu = st.sidebar.selectbox(
+
     "📌 Menu",
-    ["Dashboard", "SIP Calculator", "EMI Calculator", "History", "About"]
+
+    [
+        "Dashboard",
+        "SIP Calculator",
+        "EMI Calculator",
+        "Gold Loan",
+        "Monthly Expenses",
+        "Health Expenses",
+        "Reports",
+        "About"
+    ]
 )
 
 
@@ -113,19 +150,11 @@ if menu == "Dashboard":
 
     st.subheader("📊 Financial Dashboard")
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        income = st.number_input("Monthly Income ₹", 0, step=500)
-
-    with col2:
-        expense = st.number_input("Monthly Expense ₹", 0, step=500)
-
-    savings = st.number_input("Current Savings ₹", 0, step=1000)
-
-    goal = st.number_input("Goal Amount ₹", 0, step=5000)
-
-    months = st.number_input("Goal Duration (Months)", 1, step=1)
+    income = st.number_input("Monthly Income ₹", 0)
+    expense = st.number_input("Monthly Expense ₹", 0)
+    savings = st.number_input("Current Savings ₹", 0)
+    goal = st.number_input("Goal Amount ₹", 0)
+    months = st.number_input("Goal Duration (Months)", 1)
 
 
     if st.button("🚀 Analyze"):
@@ -137,20 +166,6 @@ if menu == "Dashboard":
 
         monthly_save = income - expense
 
-        six = monthly_save * 6
-        year = monthly_save * 12
-
-
-        # Feasibility
-        if monthly_save <= 0:
-            feasible = "No"
-            need = "Not Possible"
-        else:
-            need = math.ceil(
-                max(0, goal - savings) / monthly_save
-            )
-            feasible = "Yes" if need <= months else "No"
-
 
         data = f"""
 Income: {income}
@@ -159,8 +174,6 @@ Savings: {savings}
 Monthly Save: {monthly_save}
 Goal: {goal}
 Months: {months}
-Needed: {need}
-Feasible: {feasible}
 """
 
 
@@ -177,39 +190,35 @@ Feasible: {feasible}
                     res = llm.invoke(msg).content
 
             except:
-                res = "AI busy. Try later."
+                res = "AI Busy. Try later."
 
         else:
 
             res = f"""
-Offline Report:
+Offline Report
 
 Monthly Saving: ₹{monthly_save}
-6 Month: ₹{six}
-1 Year: ₹{year}
-
 Emergency Fund: ₹{expense*6}
-
-Try to save 20-30%.
-Start SIP ₹{monthly_save*0.4:.0f}
+Start SIP: ₹{monthly_save*0.4:.0f}
 """
 
 
-        # Save history
-        st.session_state.history.append({
-            "income": income,
-            "expense": expense,
-            "save": monthly_save,
-            "goal": goal,
-            "report": res
-        })
+        # SAVE
+        save_to_csv({
+
+            "Income": income,
+            "Expense": expense,
+            "Savings": savings,
+            "Monthly Save": monthly_save,
+            "Goal": goal,
+            "Report": res
+
+        }, DASHBOARD_FILE)
 
 
-        # DISPLAY
-        st.success("Report Ready")
+        st.success("✅ Report Generated")
 
         st.metric("Monthly Saving", f"₹{monthly_save}")
-        st.metric("1 Year Potential", f"₹{year}")
 
 
         # CHART
@@ -227,149 +236,216 @@ Start SIP ₹{monthly_save*0.4:.0f}
         st.write(res)
 
 
-        # PDF
-        if st.button("📥 Download PDF"):
-
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", size=12)
-
-            for line in res.split("\n"):
-                pdf.multi_cell(0, 8, line)
-
-            pdf.output("report.pdf")
-
-            with open("report.pdf", "rb") as f:
-                st.download_button(
-                    "Download",
-                    f,
-                    file_name="finance_report.pdf"
-                )
-
 
 # =========================
-#SIP
-# =========================
-# SIP Calculator
+# SIP
 # =========================
 
 elif menu == "SIP Calculator":
 
     st.subheader("📈 SIP Calculator")
 
-    amt = st.number_input("Monthly SIP Amount ₹", min_value=0.0, step=500.0, format="%.2f")
-    rate = st.number_input("Expected Return (% per year)", min_value=0.0, step=0.5, format="%.2f")
-    yrs = st.number_input("Investment Period (Years)", min_value=1, step=1)
+    amt = st.number_input("Monthly SIP ₹", 0.0)
+    rate = st.number_input("Return %", 0.0)
+    yrs = st.number_input("Years", 1)
+
 
     if st.button("Calculate SIP"):
 
-        n = int(yrs * 12)   # Total months
+        n = yrs * 12
 
-        if amt == 0:
-            st.warning("⚠️ Please enter SIP amount")
-            st.stop()
-
-        # Monthly rate
-        r = rate / 100 / 12
-
-        # If return = 0
         if rate == 0:
-            final_value = amt * n
+            final = amt * n
         else:
-            final_value = amt * ((1 + r) ** n - 1) / r * (1 + r)
+            r = rate / 100 / 12
 
-        total_invested = amt * n
-        yearly_investment = amt * 12
-        profit = final_value - total_invested
+            final = amt * ((1+r)**n - 1)/r*(1+r)
 
 
-        # Display Results
-        st.success("✅ SIP Calculation Complete")
+        invested = amt * n
+        profit = final - invested
 
-        st.markdown("### 📊 SIP Investment Details")
 
-        col1, col2 = st.columns(2)
+        st.success(f"Final Value: ₹{final:,.0f}")
+        st.info(f"Profit: ₹{profit:,.0f}")
 
-        with col1:
-            st.info(f"📅 Monthly Investment\n\n₹{amt:,.2f}")
-            st.info(f"📆 Yearly Investment\n\n₹{yearly_investment:,.2f}")
 
-        with col2:
-            st.info(f"💰 Total Invested\n\n₹{total_invested:,.2f}")
-            st.info(f"📈 Profit Earned\n\n₹{profit:,.2f}")
-
-        st.markdown("### 🏆 Final Maturity Value")
-        st.success(f"₹{final_value:,.2f}")
 
 # =========================
 # EMI
-# =========================
-# EMI Calculator
 # =========================
 
 elif menu == "EMI Calculator":
 
     st.subheader("🏦 EMI Calculator")
 
-    loan = st.number_input("Loan Amount ₹", min_value=0.0, step=1000.0, format="%.2f")
-    rate = st.number_input("Interest Rate (% per year)", min_value=0.0, step=0.1, format="%.2f")
-    yrs = st.number_input("Loan Tenure (Years)", min_value=1, step=1)
+    loan = st.number_input("Loan Amount ₹", 0.0)
+    rate = st.number_input("Interest %", 0.0)
+    yrs = st.number_input("Years", 1)
+
 
     if st.button("Calculate EMI"):
 
-        n = int(yrs * 12)   # Total months
+        n = yrs * 12
 
-        if loan == 0:
-            st.warning("⚠️ Please enter loan amount")
-            st.stop()
 
-        # If interest = 0
         if rate == 0:
-            monthly_emi = loan / n
+            emi = loan / n
+
         else:
-            r = rate / 12 / 100   # Monthly interest
+            r = rate / 12 / 100
 
-            monthly_emi = loan * r * (1 + r) ** n / ((1 + r) ** n - 1)
-
-        yearly_emi = monthly_emi * 12
-        total_payment = monthly_emi * n
-        total_interest = total_payment - loan
+            emi = loan*r*(1+r)**n/((1+r)**n-1)
 
 
-        # Display Results
-        st.success("✅ EMI Calculation Complete")
+        total = emi*n
+        interest = total - loan
 
-        st.markdown("### 📊 EMI Details")
 
-        col1, col2 = st.columns(2)
+        st.success(f"Monthly EMI: ₹{emi:,.0f}")
+        st.info(f"Total Interest: ₹{interest:,.0f}")
 
-        with col1:
-            st.info(f"📅 Monthly EMI\n\n₹{monthly_emi:,.2f}")
-            st.info(f"📆 Yearly EMI\n\n₹{yearly_emi:,.2f}")
-
-        with col2:
-            st.info(f"💰 Total Payment\n\n₹{total_payment:,.2f}")
-            st.info(f"📈 Total Interest\n\n₹{total_interest:,.2f}")
-# =========================
-# HISTORY
-# =========================
-
-elif menu == "History":
-
-    st.subheader("📜 Reports History")
-
-    if len(st.session_state.history) == 0:
-        st.info("No history yet")
-
-    else:
-        df = pd.DataFrame(st.session_state.history)
-
-        st.dataframe(df)
 
 
 # =========================
-# ABOUT
+# GOLD LOAN
 # =========================
+
+elif menu == "Gold Loan":
+
+    st.subheader("🥇 Gold Loan")
+
+    weight = st.number_input("Gold Weight (grams)", 0.0)
+    rate = st.number_input("Interest %", 0.0)
+    months = st.number_input("Months", 1)
+
+
+    amount = weight * 5000
+
+
+    if st.button("Calculate Gold Loan"):
+
+        interest = amount * rate/100 * months/12
+        total = amount + interest
+
+
+        st.success(f"Loan: ₹{amount:,.0f}")
+        st.info(f"Interest: ₹{interest:,.0f}")
+        st.warning(f"Total: ₹{total:,.0f}")
+
+
+        save_to_csv({
+
+            "Weight": weight,
+            "Loan": amount,
+            "Interest": interest,
+            "Total": total
+
+        }, GOLD_FILE)
+
+
+
+# =========================
+# MONTHLY EXPENSES
+# =========================
+
+elif menu == "Monthly Expenses":
+
+    st.subheader("🧾 Monthly Expenses")
+
+    groceries = st.number_input("Groceries ₹", 0)
+    milk = st.number_input("Milk ₹", 0)
+    electricity = st.number_input("Electricity ₹", 0)
+    emi = st.number_input("EMI ₹", 0)
+    mobile = st.number_input("Mobile ₹", 0)
+    others = st.number_input("Others ₹", 0)
+
+
+    total = groceries + milk + electricity + emi + mobile + others
+
+
+    if st.button("Save Expenses"):
+
+        save_to_csv({
+
+            "Groceries": groceries,
+            "Milk": milk,
+            "Electricity": electricity,
+            "EMI": emi,
+            "Mobile": mobile,
+            "Others": others,
+            "Total": total
+
+        }, EXPENSE_FILE)
+
+
+        st.success(f"Saved: ₹{total:,.0f}")
+
+
+
+# =========================
+# HEALTH EXPENSES
+# =========================
+
+elif menu == "Health Expenses":
+
+    st.subheader("🏥 Health Expenses")
+
+    doctor = st.number_input("Doctor ₹", 0)
+    medicine = st.number_input("Medicine ₹", 0)
+    test = st.number_input("Tests ₹", 0)
+    hospital = st.number_input("Hospital ₹", 0)
+
+
+    total = doctor + medicine + test + hospital
+
+
+    if st.button("Save Health Data"):
+
+        save_to_csv({
+
+            "Doctor": doctor,
+            "Medicine": medicine,
+            "Test": test,
+            "Hospital": hospital,
+            "Total": total
+
+        }, HEALTH_FILE)
+
+
+        st.success(f"Saved: ₹{total:,.0f}")
+
+
+
+# =========================
+# REPORTS
+# =========================
+
+elif menu == "Reports":
+
+    st.subheader("📊 Reports")
+
+
+    if os.path.exists(DASHBOARD_FILE):
+        st.write("### Dashboard")
+        st.dataframe(pd.read_csv(DASHBOARD_FILE))
+
+
+    if os.path.exists(EXPENSE_FILE):
+        st.write("### Monthly Expenses")
+        st.dataframe(pd.read_csv(EXPENSE_FILE))
+
+
+    if os.path.exists(GOLD_FILE):
+        st.write("### Gold Loans")
+        st.dataframe(pd.read_csv(GOLD_FILE))
+
+
+    if os.path.exists(HEALTH_FILE):
+        st.write("### Health Expenses")
+        st.dataframe(pd.read_csv(HEALTH_FILE))
+
+
 
 # =========================
 # ABOUT
@@ -377,58 +453,38 @@ elif menu == "History":
 
 else:
 
-    st.subheader("ℹ️ About This App")
+    st.subheader("ℹ️ About")
 
     st.markdown("""
-## 💼 AI Personal Finance Manager
 
-Welcome to **AI Finance App** — your smart assistant for managing money wisely 💰📊
+## 💼 AI Finance App
 
-### 🚀 Key Features
-✅ Budget & Expense Planner  
-✅ AI Financial Advisor  
-✅ SIP & EMI Calculators  
-✅ Interactive Charts  
-✅ PDF Report Generator  
-✅ Mobile-Friendly Interface  
+Smart money manager for Indian users 🇮🇳
 
-### 🎯 Purpose
-This app helps Indian users 🇮🇳:
-- Track income & expenses  
-- Plan savings  
-- Grow investments  
-- Manage loans  
-- Improve financial discipline  
+### Features
+✅ AI Advisor  
+✅ SIP / EMI  
+✅ Gold Loan  
+✅ Expense Tracker  
+✅ Health Tracker  
+✅ Reports  
 
-### 🛠️ Technology Used
-🔹 Python  
-🔹 Streamlit  
-🔹 AI APIs  
-🔹 Pandas & Matplotlib  
+### Developer
+Made by **Pavansai** ❤️
 
-### 👨‍💻 Developer
-Made with ❤️ by **Pavansai**  
-B.Tech AIML Student | AI Enthusiast 🚀
-
----
-
-📢 *"Smart Money = Strong Future"*
 """)
 
+
 # =========================
-## =========================
 # FOOTER
 # =========================
 
 st.markdown("---")
 
 st.markdown("""
-<div style="text-align: center; padding: 10px;">
-
-💻 Built with <b>Python</b> & <b>Streamlit</b> 🚀<br>
-📊 AI Personal Finance Manager<br>
-👨‍💻 Developed by <b>Pavansai</b><br>
-🇮🇳 Made for Indian Users
-
-</div>
+<center>
+💻 Built with Python & Streamlit 🚀<br>
+AI Personal Finance Manager<br>
+By Pavansai
+</center>
 """, unsafe_allow_html=True)
